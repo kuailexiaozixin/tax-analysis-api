@@ -1,22 +1,20 @@
 # tax-analysis-api
 
-`tax-analysis-engine` 的 HTTP 适配器。与引擎仓库分开存放，通过
+`tax-analysis-skill` 的 HTTP 适配器。与引擎仓库分开存放，通过
 `TAX_ENGINE_ROOT` 或同级目录约定找到引擎的 `scripts/`；只做边界校验、
 任务编排与响应成形，不复制税收判据。
 
 ## 运行
 
-- Python ≥ 3.10；本机实测 Python 3.13.14、FastAPI 0.143.1、Uvicorn 0.54.0、
+- Python ≥ 3.10；已验证 Python 3.13.14、FastAPI 0.143.1、Uvicorn 0.54.0、
   Pydantic 2.13.4。
 
 ```bash
-unset PYTHONHOME
-PY="D:/Python/cpython-3.13.14-windows-x86_64-none/python.exe"
 cd tax-analysis-api
-PYTHONPATH=src "$PY" -m uvicorn tax_engine_api.app:app --host 127.0.0.1 --port 8000
+PYTHONPATH=src python -m uvicorn tax_engine_api.app:app --host 127.0.0.1 --port 8000
 ```
 
-或用控制台脚本：`PYTHONPATH=src "$PY" -m tax_engine_api.app`（安装后为
+或用控制台脚本：`PYTHONPATH=src python -m tax_engine_api.app`（安装后为
 `tax-analysis-api`）。Swagger：<http://127.0.0.1:8000/docs>。
 
 环境变量：

@@ -1,4 +1,4 @@
-"""tax-analysis-engine 的 HTTP 接口。
+"""tax-analysis-skill 的 HTTP 接口。
 
 设计边界：
 - 路由函数是同步的：引擎取数是阻塞 IO，FastAPI 会把 sync 路由放进线程池，
@@ -389,7 +389,7 @@ def create_app(*, rate_limit: int | None = None,
     window = float(os.getenv("TAX_API_RATE_WINDOW_S", "60")) if rate_window_s is None else rate_window_s
 
     application = FastAPI(
-        title="tax-analysis-engine API",
+        title="tax-analysis-skill API",
         version="1.0.0",
         description=(
             "税收政策分析引擎的 HTTP 适配器。返回的是结构化底稿，"
