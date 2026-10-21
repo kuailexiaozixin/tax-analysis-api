@@ -25,12 +25,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import engine
 from .schemas import (
+    AnalysisGatherRequest,
+    AnalysisPlanRequest,
     AnalysisRequest,
     CalculationRequest,
     CaseSearchRequest,
     ClassifyRequest,
     ControlRequest,
     CoverageRequest,
+    GovSearchRequest,
     InspectionRequest,
     IntakeRequest,
     LedgerCheckRequest,
@@ -161,7 +164,8 @@ def _run_analysis(jobs: JobStore, job_id: str, req: AnalysisRequest):
     try:
         result = svc.analyze_answer(
             req.question, at=req.at, read_body=req.read_body,
-            check_citations=req.check_citations)
+            check_citations=req.check_citations,
+            max_per_round=req.max_per_round)
     except ServiceError as exc:
         jobs.fail(job_id, exc.as_dict()["error"], exc.status)
     except Exception as exc:  # 任务失败必须留下状态与原因，不能静默消失
@@ -270,6 +274,27 @@ def search(req: SearchRequest):
     return ok(result["items"], meta)
 
 
+@router.post("/gov-searches")
+def gov_search(req: GovSearchRequest):
+    result = svc.search_gov(
+        req.query, source=req.source, size=req.size, page=req.page,
+        scope=req.scope, exact=req.exact, sort=req.sort,
+        date_from=req.date_from, date_to=req.date_to, aging=req.aging,
+        body=req.body, file_only=req.file_only, tax_type=req.tax_type,
+        doc_type=req.doc_type, doc_year=req.doc_year, doc_no=req.doc_no,
+        effect_level=req.effect_level)
+    meta = {
+        "query": result["query"],
+        "source": result["source"],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total": result["total"],
+        "has_next": result["has_next"],
+        **(result.get("meta") or {}),
+    }
+    return ok(result["items"], meta)
+
+
 @router.get("/laws/{law_id}")
 def law_info(law_id: str):
     return ok(svc.law_info(law_id))
@@ -278,6 +303,15 @@ def law_info(law_id: str):
 @router.get("/laws/{law_id}/text")
 def law_text(law_id: str):
     return ok(svc.law_text(law_id))
+
+
+@router.get("/laws/{law_id}/web-related")
+def law_web_related(
+    law_id: str,
+    keyword: Annotated[str, Query()] = "",
+):
+    result = svc.web_related(law_id, keyword=keyword)
+    return ok(result, {"count": result.get("total", 0)})
 
 
 @router.get("/interpretations")
@@ -290,6 +324,12 @@ def interpretations(
     result = svc.law_interpretations(
         title, keyword=keyword, province=province, sources=source)
     return ok(result, {"count": result.get("total", 0)})
+
+
+@router.get("/calc-skeletons")
+def calc_skeletons():
+    rows = svc.calc_list()
+    return ok(rows, {"count": len(rows)})
 
 
 @router.post("/calculations")
@@ -319,6 +359,14 @@ def inspection(req: InspectionRequest):
         scenario=req.scenario, signal=req.signal, tolerance=req.tolerance))
 
 
+@router.get("/intakes/blank")
+def intake_blank():
+    doc = svc.intake_blank()
+    return ok({"document": doc},
+              {"contracts": len(doc.get("合同") or []),
+               "units": len(doc.get("判断单元") or [])})
+
+
 @router.post("/intakes")
 def intake(req: IntakeRequest):
     return ok(svc.intake(req.document))
@@ -335,6 +383,22 @@ def controls(req: ControlRequest):
     return ok(svc.controls(
         diagnosis=req.diagnosis, assumptions=req.assumptions,
         links=req.links, codes=req.codes))
+
+
+@router.post("/analysis-plans")
+def analysis_plan(req: AnalysisPlanRequest):
+    return ok(svc.analyze_plan(req.question))
+
+
+@router.post("/analysis-gathers")
+def analysis_gather(req: AnalysisGatherRequest):
+    result = svc.analyze_gather(
+        req.question, at=req.at, read_body=req.read_body,
+        check_citations=req.check_citations,
+        max_per_round=req.max_per_round)
+    meta = {"evidence_count": len(result.get("evidence") or []),
+            "errors": result.get("errors") or []}
+    return ok(result, meta)
 
 
 @router.post("/analyses", status_code=202)

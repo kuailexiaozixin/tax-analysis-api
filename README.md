@@ -28,7 +28,7 @@ PYTHONPATH=src python -m uvicorn tax_engine_api.app:app --host 127.0.0.1 --port 
 
 ## 运行时快照与独立性
 
-- 本包 `src/tax_engine_api/runtime/` 是引擎的只读快照：24 个取数与判据脚本、
+- 本包 `src/tax_engine_api/runtime/` 是引擎的只读快照：25 个取数与判据脚本、
   7 个判据注册表、2 份输出模板与风险框架。引导层只把这一个目录放进
   `sys.path`，不 import 任何外部引擎包。
 - `runtime/MANIFEST.json` 记录快照对应的引擎版本与每个文件的 SHA-256；
@@ -52,14 +52,20 @@ PYTHONPATH=src python -m uvicorn tax_engine_api.app:app --host 127.0.0.1 --port 
 | POST | `/v1/classifications` | ① 判型 |
 | POST | `/v1/coverage-checks` | ② 覆盖率 |
 | POST | `/v1/searches` | ③④ 检索；多源无页码 |
+| POST | `/v1/gov-searches` | 税务总局站内／法规库单源检索，带全部收窄维度 |
 | GET | `/v1/laws/{id}` / `/v1/laws/{id}/text` | 元数据 / 全文 |
+| GET | `/v1/laws/{id}/web-related?keyword=` | 税屋／公众号／全网相关网页 |
 | GET | `/v1/interpretations?title=…` | 官方解读 |
+| GET | `/v1/calc-skeletons` | 可展开算式的税种清单 |
 | POST | `/v1/calculations` | 算式展开 |
 | POST | `/v1/case-searches` | 类案台账 |
 | POST | `/v1/ledger-checks` | 账套巡检 |
 | POST | `/v1/inspections` | 稽查模拟 |
+| GET | `/v1/intakes/blank` | 空白多合同受理表，可直接填后 POST 回受理 |
 | POST | `/v1/intakes` / `/v1/reconciliations` | 合同受理 / 对账 |
 | POST | `/v1/controls` | 内控生成 |
+| POST | `/v1/analysis-plans` | ⑤ 分析计划：问题分类与取数清单 |
+| POST | `/v1/analysis-gathers` | ⑤ 证据收集：逐轮检索、抓正文、核引用 |
 | POST | `/v1/analyses` | ⑥ 分析长任务，202 + `Location` |
 | GET | `/v1/analyses/{id}` / `/v1/analyses/{id}/result` | 状态 / 结果 |
 
@@ -82,6 +88,19 @@ PYTHONPATH=src python -m uvicorn tax_engine_api.app:app --host 127.0.0.1 --port 
   （带 `Retry-After`）。
 - 搜索的 `data` 是条目数组，分页与各源状况在 `meta`；多源聚合传 `page>1`
   返回 400 `page_not_supported`，不静默停在第一页。
+- `gov-searches` 的 `source` 取 `chinatax`（search5）或 `fgk`（税务法规库）。
+  `fgk` 不支持页码，`page>1` 返回 400；`body` 只对 `fgk` 有效，对 `chinatax`
+  传 `true` 返回 400；`scope=fulltext` 改按正文匹配。成文日期区间、时效、
+  税种、文种、年份、文号、效力等级这些收窄维度对两路都生效——`fgk` 是把它们
+  逐页下推到 search5，再只保留法规库条目。
+- `web-related` 的 `data` 是合并去重后的 `sources`，`meta.count` 是条数；
+  税屋／公众号与 360 全网两路都取不到时仍返回 200，由 `engine_error` 说明
+  这一轮没取成，不能读成"没有相关内容"。
+- `intakes/blank` 的 `data` 是 `{"document": …}`，`meta` 给合同与判断单元数；
+  填好合同名称后原样 POST 到 `/v1/intakes`，未填名返回 400。
+- `analysis-plans` 与 `analysis-gathers` 是 ⑤ 分析主线的两段：前者只出计划，
+  后者逐轮取数；`analyses` 是 ⑥ 一次跑完。三者都接受 `max_per_round`
+  控制每轮取数上限（1–200）。
 - 分析任务在进程内异步执行：202 返回任务 ID，`/result` 未完成时返回 409
   `job_not_ready` + `Retry-After`。任务表上限 100 条，服务重启即丢。
 - 限流按客户端地址的固定窗口计数，进程内有效；不信任 `X-Forwarded-For`。

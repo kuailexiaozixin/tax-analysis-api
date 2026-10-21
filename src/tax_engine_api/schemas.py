@@ -41,6 +41,26 @@ class SearchRequest(StrictModel):
     date_to: str = ""
 
 
+class GovSearchRequest(StrictModel):
+    query: str = Field(min_length=1)
+    source: Literal["chinatax", "fgk"] = "chinatax"
+    size: int = Field(10, ge=1, le=50)
+    page: int = Field(1, ge=1, le=1000)
+    scope: Literal["title", "fulltext"] = "title"
+    exact: bool = False
+    sort: Literal["relevance", "date"] = "relevance"
+    date_from: str = ""
+    date_to: str = ""
+    aging: str = ""
+    body: bool = False
+    file_only: bool = True
+    tax_type: str = ""
+    doc_type: str = ""
+    doc_year: str = ""
+    doc_no: str = ""
+    effect_level: str = ""
+
+
 class CalculationRequest(StrictModel):
     skeleton: str = Field(min_length=1)
     params: dict[str, Any]
@@ -95,3 +115,16 @@ class AnalysisRequest(StrictModel):
     at: str = ""
     read_body: bool = True
     check_citations: bool = True
+    max_per_round: int | None = Field(None, ge=1, le=200)
+
+
+class AnalysisPlanRequest(StrictModel):
+    question: str = Field(min_length=1)
+
+
+class AnalysisGatherRequest(StrictModel):
+    question: str = Field(min_length=1)
+    at: str = ""
+    read_body: bool = True
+    check_citations: bool = True
+    max_per_round: int | None = Field(None, ge=1, le=200)

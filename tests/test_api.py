@@ -132,6 +132,83 @@ def test_multi_source_page_two_is_400_without_network(client):
     assert resp.json()["error"]["code"] == "page_not_supported"
 
 
+def test_gov_search_forwards_filters_and_returns_meta(client, monkeypatch):
+    captured = {}
+
+    def fake_gov(query, **kwargs):
+        captured.update(kwargs)
+        return {
+            "query": query, "source": kwargs["source"], "page": 2,
+            "page_size": 10, "total": 25, "has_next": True,
+            "items": [{"title": "测试文件", "document_number": "公告2026年第1号"}],
+            "meta": {"source": kwargs["source"],
+                     "filters": {"xxgkAging": "全文有效"},
+                     "filter_note": "维度拼窄的说明", "errors": {},
+                     "total_hits": 99},
+        }
+
+    monkeypatch.setattr(engine.tax_service, "search_gov", fake_gov)
+    resp = client.post("/v1/gov-searches", json={
+        "query": "增值税", "source": "chinatax", "page": 2,
+        "aging": "全文有效", "date_from": "2026-01-01", "sort": "date",
+        "tax_type": "增值税",
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert captured["aging"] == "全文有效"
+    assert captured["date_from"] == "2026-01-01"
+    assert captured["sort"] == "date"
+    assert captured["tax_type"] == "增值税"
+    assert body["meta"]["total"] == 25
+    assert body["meta"]["filter_note"] == "维度拼窄的说明"
+    assert body["data"][0]["title"] == "测试文件"
+
+
+def test_gov_search_rejects_fgk_page_before_network(client):
+    resp = client.post("/v1/gov-searches", json={
+        "query": "增值税", "source": "fgk", "page": 2})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "page_not_supported"
+
+
+def test_calc_skeleton_list(client):
+    resp = client.get("/v1/calc-skeletons")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meta"]["count"] == 6
+    row = next(item for item in body["data"] if item["name"] == "从价计征")
+    assert row["formula"]
+    assert "计税依据" in row["inputs"]
+
+
+def test_analysis_plan_offline(client):
+    resp = client.post("/v1/analysis-plans",
+                       json={"question": "研发费用加计扣除比例是多少"})
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["question"] == "研发费用加计扣除比例是多少"
+    assert data["rounds"]
+
+
+def test_analysis_gather_forwards_max_per_round(client, monkeypatch):
+    captured = {}
+
+    def fake_gather(question, **kwargs):
+        captured.update(kwargs)
+        return {"question": question, "evidence": [], "errors": []}
+
+    monkeypatch.setattr(engine.tax_service, "analyze_gather", fake_gather)
+    resp = client.post("/v1/analysis-gathers", json={
+        "question": "研发费用加计扣除比例是多少",
+        "at": "2026-10-20", "read_body": False, "max_per_round": 2,
+    })
+    assert resp.status_code == 200, resp.text
+    assert captured["at"] == "2026-10-20"
+    assert captured["read_body"] is False
+    assert captured["max_per_round"] == 2
+    assert resp.json()["meta"]["evidence_count"] == 0
+
+
 def test_request_validation_uses_error_envelope(client):
     resp = client.post("/v1/searches", json={"query": "增值税", "size": 0})
     assert resp.status_code == 422
@@ -170,6 +247,49 @@ def test_law_text_patched(client, monkeypatch):
     resp = client.get("/v1/laws/abc/text")
     assert resp.status_code == 200
     assert resp.json()["data"]["paragraphs"] == ["第一条"]
+
+
+def test_law_web_related_forwards_keyword(client, monkeypatch):
+    captured = {}
+
+    def fake_related(law_id, keyword=""):
+        captured.update(law_id=law_id, keyword=keyword)
+        return {"law_id": law_id, "law_title": "增值税法", "keyword": keyword,
+                "total": 1, "sources": [{"title": "解读A"}]}
+
+    monkeypatch.setattr(engine.tax_service, "web_related", fake_related)
+    resp = client.get("/v1/laws/abc/web-related", params={"keyword": "税率"})
+    assert resp.status_code == 200, resp.text
+    assert captured == {"law_id": "abc", "keyword": "税率"}
+    assert resp.json()["data"]["sources"][0]["title"] == "解读A"
+    assert resp.json()["meta"]["count"] == 1
+
+
+def test_law_web_related_upstream_error_is_502(client, monkeypatch):
+    from tax_engine_api.engine import tax_service
+
+    def broken(*_a, **_k):
+        raise tax_service.ServiceError("upstream_error", "找相关网页失败", 502)
+
+    monkeypatch.setattr(engine.tax_service, "web_related", broken)
+    resp = client.get("/v1/laws/abc/web-related")
+    assert resp.status_code == 502
+    assert resp.json()["error"]["code"] == "upstream_error"
+
+
+def test_blank_intake_round_trips_through_intake(client):
+    blank = client.get("/v1/intakes/blank")
+    assert blank.status_code == 200
+    body = blank.json()
+    doc = body["data"]["document"]
+    assert [c["代号"] for c in doc["合同"]] == ["CT-1"]
+    assert [u["代号"] for u in doc["判断单元"]] == ["U1"]
+    assert body["meta"] == {"contracts": 1, "units": 1}
+
+    doc["合同"][0]["名称"] = "采购合同"
+    filled = client.post("/v1/intakes", json={"document": doc})
+    assert filled.status_code == 200, filled.text
+    assert filled.json()["data"]["缺维度数"] == 9
 
 
 def test_law_not_found_is_404(client, monkeypatch):
@@ -260,6 +380,8 @@ def test_openapi_is_available(client):
     paths = resp.json()["paths"]
     assert "/v1/searches" in paths
     assert "/v1/analyses/{job_id}/result" in paths
+    assert "/v1/intakes/blank" in paths
+    assert "/v1/laws/{law_id}/web-related" in paths
 
 
 def test_service_layer_lives_here_not_in_engine():
@@ -321,7 +443,7 @@ def test_vendored_copies_match_fingerprint():
     import hashlib
 
     pins = {
-        "tax_service": "5c68bda0a1fcff0ebcfb996528f4c79cd58cdc72d358e73857f489250bb63ff7",
+        "tax_service": "aa156a7db79d44a706c4fba9561b27ba7e71fedcfadd717976b54bdf5cb0fde9",
         "tax_doc": "4ae92d52346fddb1b660b85836a7d8d7cadde5961025369535d262519cff35a0",
     }
     got = {
