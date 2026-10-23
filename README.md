@@ -99,12 +99,21 @@ PYTHONPATH=src python -m uvicorn tax_engine_api.app:app --host 127.0.0.1 --port 
 | `POST /v1/gov-searches` | 同上，另有 `source`（`chinatax` 或 `fgk`）、`aging`、`body`、`file_only`、`tax_type`、`doc_type`、`doc_year`、`doc_no`、`effect_level` | 税务总局站内或法规库的条目数组与筛选说明 |
 | `GET /v1/laws/{law_id}` | NPC bbbs 编号 | 法规元数据（标题、文号、时效等） |
 | `GET /v1/laws/{law_id}/text` | NPC bbbs 编号 | `available`、`count` 与正文段落数组 |
-| `GET /v1/laws/{law_id}/web-related` | `keyword` 可选 | 税屋、微信公众号与 360 全网的合并去重结果；360 那一路失败时仍返回 200，原因在 `data.engine_error` |
+| `GET /v1/laws/{law_id}/web-related` | `keyword` 可选 | 税屋、微信公众号与搜狗全网的合并去重结果；搜狗那一路失败时仍返回 200，原因在 `data.engine_error` |
 | `GET /v1/interpretations` | `title` 必填；`keyword`、`province`、`source` 可选 | 只来自 `.gov.cn` 的官方解读条目 |
 
-`/v1/searches` 的六个来源是 `npc`、`chinatax`、`so360`、`shui5`、`wechat`、
+`/v1/searches` 的六个来源是 `npc`、`chinatax`、`sogou`、`shui5`、`wechat`、
 `ctax`，分别覆盖全国人大法规库、税务总局、地方口径、税屋、微信公众号和中国
 税网。默认 `status=3`（现行有效）；`1` 已废止、`2` 已修改、`4` 尚未生效。
+
+搜狗网页检索以 `m.sogou.com` 为正常入口，每次只取一页并缓存整页元数据 30 分钟；
+`size` 只限制输出，同词同站换条数复用缓存，不增加请求或保证取满。摘要完整保留，
+日期缺失时留空。官方解读默认向总局、财政部、中国政府网各问一次，不再单独问法规库；
+显式指定法规库或省局仍可使用，父域检索不保证法规库召回。部分失败保留已取回结果，
+另报 `engine_error`、`queries_blocked`。各站有序查询，仅复用取数层的 30 分钟缓存，到期后重查，
+不另存无期限组合结果、不设 15 秒线程等待上限。网络异常与 5xx 有限重试，其他非 200 状态直接报错。
+保留限频与冷却，遇拦截立即返回，
+不等待冷却到期，也不通过代理池或端点轮换绕过限制。
 
 ### 算式与类案
 
@@ -212,7 +221,7 @@ curl -s http://127.0.0.1:8000/v1/analyses/<job_id>/result
   `body` 只对 `fgk` 有效；`scope=fulltext` 改按正文匹配。成文日期、时效、
   税种、文种、年份、文号、效力等级等条件对两路都生效。
 - `web-related` 的 `data.sources` 是合并去重后的条目，`meta.count` 是条数；
-  360 全网那一路失败时仍返回 200，原因写在 `data.engine_error`，不能读成
+  搜狗全网那一路失败时仍返回 200，原因写在 `data.engine_error`，不能读成
   「没有相关内容」。税屋与公众号那一路失败时只体现为条目减少，没有单独的错误字段。
 - `intakes/blank` 返回 `{"document": …}`；填好合同名称后原样 POST 到
   `/v1/intakes`，未填名返回 400。
