@@ -412,7 +412,7 @@ def test_runtime_snapshot_matches_manifest():
                         (project / "pyproject.toml").read_text(encoding="utf-8"), re.M)[1]
     assert sys.modules[engine.__package__].__version__ == version
     manifest = json.loads((runtime / "MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["engine_version"] == "3.62.17"
+    assert manifest["engine_version"] == "3.62.18"
     listed = manifest["files"]
     actual = {
         path.relative_to(runtime).as_posix()
@@ -486,7 +486,9 @@ def test_official_interpretations_query_plan_offline(monkeypatch):
         return {"results": []}
 
     monkeypatch.setattr(sogou, "sogou_search", draft_search)
-    assert answer._legis_round("离线草案", 5) == ([], "")
+    # 3.62.18 起六个取数函数交回三元：（条目，整路失败说明，逐枚没取全说明）。
+    # 第三枚不能并进第二枚——那一枚一非空就把已取回的条目全部作废。
+    assert answer._legis_round("离线草案", 5) == ([], "", "")
     assert draft_calls == [("离线草案", "npc.gov.cn", 5)]
     monkeypatch.setattr(answer, "build_plan", lambda question: {
         "type": {"type": "default"},
