@@ -412,7 +412,7 @@ def test_runtime_snapshot_matches_manifest():
                         (project / "pyproject.toml").read_text(encoding="utf-8"), re.M)[1]
     assert sys.modules[engine.__package__].__version__ == version
     manifest = json.loads((runtime / "MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["engine_version"] == "3.62.20"
+    assert manifest["engine_version"] == "3.62.21"
     listed = manifest["files"]
     actual = {
         path.relative_to(runtime).as_posix()
@@ -649,7 +649,7 @@ def test_vendored_copies_match_fingerprint():
 
     pins = {
         "tax_service": "adf63b15c32df4637d6fe730835e1eb4524e28afe8484c95111557d33a531b42",
-        "tax_doc": "01f66bf24739285cf42cc72a2d7ec0cdff9f89e29e896db38365ae9e3176738f",
+        "tax_doc": "15877a54afaa05f1ac45fb757e2131a1766776e642dd57d24de2636f07f6f608",
     }
     got = {
         "tax_service": hashlib.sha256(
