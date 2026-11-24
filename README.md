@@ -122,6 +122,7 @@ PYTHONPATH=src python -m uvicorn tax_engine_api.app:app --host 127.0.0.1 --port 
 | `GET /v1/calc-skeletons` | 无 | 六条算式骨架的名称、公式、输入与结果字段 |
 | `POST /v1/calculations` | `skeleton` 与 `params` | 代入步骤、分档与最终结果；缺参数报 `missing_params`，多余参数报 `invalid_parameter` |
 | `POST /v1/case-searches` | `topic` 必填；`elements`、`mode`、`pages`、`order`、`limit`、`as_of`、`shui5` 可选 | 税务总局查处通报与曝光典型的候选、过滤、去重台账；`meta.candidate_count` 为候选数 |
+| `POST /v1/papers` | `date` 与 `keyword` 二选一；`edition`、`editions`、`days`、`size`、`date_from`、`date_to` 可选 | 中国税务报网络报（数字报）的当日版面或逐日扫版面的关键词命中；`meta.article_count` 为版面篇数、`meta.hit_count` 为命中数。这一源不参与多源聚合：同一篇稿在本报与中国税网常用两副标题，按标题去重会错并 |
 
 ### 检查件
 

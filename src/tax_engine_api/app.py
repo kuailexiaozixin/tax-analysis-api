@@ -37,6 +37,7 @@ from .schemas import (
     InspectionRequest,
     IntakeRequest,
     LedgerCheckRequest,
+    PaperRequest,
     ReconcileRequest,
     SearchRequest,
 )
@@ -343,6 +344,24 @@ def case_searches(req: CaseSearchRequest):
         req.topic, elements=req.elements, mode=req.mode, pages=req.pages,
         order=req.order, limit=req.limit, as_of=req.as_of, shui5=req.shui5)
     return ok(result, {"candidate_count": result.get("candidate_count", 0)})
+
+
+@router.post("/papers")
+def paper_read(req: PaperRequest):
+    """中国税务报·网络报（数字报）的独立取数口。
+
+    不进 /v1/searches 的 sources 也不参与聚合：同一篇稿在本报与中国税网常用
+    两副标题，聚合层按标题去重会把两条不同地址的稿子错并成一条。
+    """
+    result = svc.paper(
+        date=req.date, keyword=req.keyword, edition=req.edition,
+        editions=req.editions, days=req.days, size=req.size,
+        date_from=req.date_from, date_to=req.date_to)
+    if req.date:
+        meta = {"article_count": len(result.get("articles", []))}
+    else:
+        meta = {"hit_count": len(result.get("results", []))}
+    return ok(result, meta)
 
 
 @router.post("/ledger-checks")

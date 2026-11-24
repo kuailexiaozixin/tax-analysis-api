@@ -77,6 +77,18 @@ class CaseSearchRequest(StrictModel):
     shui5: bool = False
 
 
+class PaperRequest(StrictModel):
+    """数字报：date 与 keyword 二选一，业务判据仍在 tax_service.paper。"""
+    date: str = ""
+    keyword: str = ""
+    edition: int = Field(6, ge=1, le=8)
+    editions: list[int] | None = None
+    days: int = Field(10, ge=1, le=30)
+    size: int = Field(6, ge=1, le=30)
+    date_from: str = ""
+    date_to: str = ""
+
+
 class LedgerCheckRequest(StrictModel):
     ledger: dict[str, Any]
     params: dict[str, Any] | None = None

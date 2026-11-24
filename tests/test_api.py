@@ -96,6 +96,63 @@ def test_case_search_accepts_engine_order_values(client, monkeypatch):
     assert bad.json()["error"]["code"] == "validation_error"
 
 
+def test_paper_date_branch_reaches_fetch_edition(client, monkeypatch):
+    captured = {}
+
+    def fake_paper(**kwargs):
+        captured.update(kwargs)
+        return {"date": "2026-11-24", "articles": [{}, {}], "_status": ""}
+
+    monkeypatch.setattr(engine.tax_service, "paper", fake_paper)
+    resp = client.post("/v1/papers", json={"date": "2026-11-24", "edition": 3})
+    assert resp.status_code == 200, resp.text
+    assert captured["date"] == "2026-11-24"
+    assert captured["edition"] == 3
+    assert resp.json()["meta"] == {"article_count": 2}
+
+
+def test_paper_keyword_branch_reports_hit_count_meta(client, monkeypatch):
+    captured = {}
+
+    def fake_paper(**kwargs):
+        captured.update(kwargs)
+        return {"results": [{}, {}, {}], "total": None, "_status": ""}
+
+    monkeypatch.setattr(engine.tax_service, "paper", fake_paper)
+    resp = client.post("/v1/papers", json={
+        "keyword": "虚开", "editions": [5, 6], "days": 7, "size": 9})
+    assert resp.status_code == 200, resp.text
+    assert captured["keyword"] == "虚开"
+    assert captured["editions"] == [5, 6]
+    assert resp.json()["meta"] == {"hit_count": 3}
+    # total 恒为 None 是这个源的形状（站点无站内检索，扫不出总数），
+    # 不许被适配器换成条数。
+    assert resp.json()["data"]["total"] is None
+
+
+def test_paper_requires_exactly_one_of_date_and_keyword(client):
+    for body in ({}, {"date": "2026-11-24", "keyword": "虚开"}):
+        resp = client.post("/v1/papers", json=body)
+        assert resp.status_code == 400, (body, resp.text)
+        assert resp.json()["error"]["code"] == "invalid_parameter"
+
+
+def test_paper_edition_domain_is_422_before_any_call(client):
+    resp = client.post("/v1/papers", json={"date": "2026-11-24", "edition": 9})
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "validation_error"
+
+
+def test_paper_upstream_failure_is_502(client, monkeypatch):
+    def boom(**kwargs):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(engine.tax_service.tax_paper, "fetch_edition", boom)
+    resp = client.post("/v1/papers", json={"date": "2026-11-24"})
+    assert resp.status_code == 502, resp.text
+    assert resp.json()["error"]["code"] == "upstream_error"
+
+
 def test_search_envelope_and_pagination_meta(client, monkeypatch):
     def fake_search(query, **kwargs):
         assert query == "增值税"
@@ -412,7 +469,7 @@ def test_runtime_snapshot_matches_manifest():
                         (project / "pyproject.toml").read_text(encoding="utf-8"), re.M)[1]
     assert sys.modules[engine.__package__].__version__ == version
     manifest = json.loads((runtime / "MANIFEST.json").read_text(encoding="utf-8"))
-    assert manifest["engine_version"] == "3.62.22"
+    assert manifest["engine_version"] == "3.62.23"
     listed = manifest["files"]
     actual = {
         path.relative_to(runtime).as_posix()
@@ -648,7 +705,7 @@ def test_vendored_copies_match_fingerprint():
     import hashlib
 
     pins = {
-        "tax_service": "adf63b15c32df4637d6fe730835e1eb4524e28afe8484c95111557d33a531b42",
+        "tax_service": "cc01b7ed8e43ff585ab964f24dce05255e18815b6d8451802acb420edfd97231",
         "tax_doc": "15877a54afaa05f1ac45fb757e2131a1766776e642dd57d24de2636f07f6f608",
     }
     got = {
